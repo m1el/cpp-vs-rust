@@ -707,10 +707,11 @@ impl<'alloc, 'code, 'reporter: 'alloc> Lexer<'alloc, 'code, 'reporter> {
                         self.original_input.null_terminator(),
                     )
                 });
-                if character.code_point == LEFT_SINGLE_QUOTE
-                    || character.code_point == RIGHT_SINGLE_QUOTE
-                    || character.code_point == LEFT_DOUBLE_QUOTE
-                    || character.code_point == RIGHT_DOUBLE_QUOTE
+                let code_point = character.code_point.unwrap_or('\0');
+                if code_point == LEFT_SINGLE_QUOTE
+                    || code_point == RIGHT_SINGLE_QUOTE
+                    || code_point == LEFT_DOUBLE_QUOTE
+                    || code_point == RIGHT_DOUBLE_QUOTE
                 {
                     self.input = InputPointer(self.parse_smart_quote_string_literal(&character));
                     self.last_token.type_ = TokenType::String;
@@ -894,19 +895,20 @@ impl<'alloc, 'code, 'reporter: 'alloc> Lexer<'alloc, 'code, 'reporter> {
     }
 
     fn parse_smart_quote_string_literal(&mut self, opening_quote: &DecodeUTF8Result) -> *const u8 {
-        qljs_assert!(opening_quote.ok);
+        qljs_assert!(opening_quote.is_ok());
+        let code_point = opening_quote.code_point.unwrap_or('\0');
         qljs_assert!(
-            opening_quote.code_point == LEFT_SINGLE_QUOTE
-                || opening_quote.code_point == RIGHT_SINGLE_QUOTE
-                || opening_quote.code_point == LEFT_DOUBLE_QUOTE
-                || opening_quote.code_point == RIGHT_DOUBLE_QUOTE
+            code_point == LEFT_SINGLE_QUOTE
+                || code_point == RIGHT_SINGLE_QUOTE
+                || code_point == LEFT_DOUBLE_QUOTE
+                || code_point == RIGHT_DOUBLE_QUOTE
         );
         let opening_quote_begin: InputPointer = self.input;
         let opening_quote_end: InputPointer =
             opening_quote_begin + narrow_cast::<isize, _>(opening_quote.size);
 
-        let is_double_quote: bool = opening_quote.code_point == LEFT_DOUBLE_QUOTE
-            || opening_quote.code_point == RIGHT_DOUBLE_QUOTE;
+        let is_double_quote: bool = code_point == LEFT_DOUBLE_QUOTE
+            || code_point == RIGHT_DOUBLE_QUOTE;
         report(
             self.diag_reporter,
             DiagInvalidQuotesAroundStringLiteral {
@@ -934,11 +936,11 @@ impl<'alloc, 'code, 'reporter: 'alloc> Lexer<'alloc, 'code, 'reporter> {
             let decoded: DecodeUTF8Result = decode_utf_8(unsafe {
                 PaddedStringView::from_begin_end(c.0, self.original_input.null_terminator())
             });
-            if decoded.ok {
-                if is_ending_quote(decoded.code_point) {
+            if let Some(code_point) = decoded.code_point {
+                if is_ending_quote(code_point) {
                     return (c + narrow_cast::<isize, _>(decoded.size)).0;
                 }
-                if is_newline_character(decoded.code_point as u32) {
+                if is_newline_character(code_point as u32) {
                     report(
                         self.diag_reporter,
                         DiagUnclosedStringLiteral {
@@ -2214,7 +2216,7 @@ impl<'alloc, 'code, 'reporter: 'alloc> Lexer<'alloc, 'code, 'reporter> {
                 qljs_assert!(self.is_eof(input.0));
                 break;
             }
-            if !decode_result.ok {
+            if !decode_result.is_ok() {
                 let errors_begin: InputPointer = input;
                 input += narrow_cast::<isize, _>(decode_result.size);
                 loop {
@@ -2224,7 +2226,7 @@ impl<'alloc, 'code, 'reporter: 'alloc> Lexer<'alloc, 'code, 'reporter> {
                             self.original_input.null_terminator(),
                         )
                     });
-                    if decode_result.ok || decode_result.size == 0 {
+                    if decode_result.is_ok() || decode_result.size == 0 {
                         break;
                     }
                     input += narrow_cast::<isize, _>(decode_result.size);
@@ -2270,7 +2272,7 @@ impl<'alloc, 'code, 'reporter: 'alloc> Lexer<'alloc, 'code, 'reporter> {
                 let character_begin: InputPointer = input;
                 let character_end: InputPointer =
                     input + narrow_cast::<isize, _>(decode_result.size);
-                let code_point: u32 = decode_result.code_point as u32;
+                let code_point: u32 = decode_result.code_point.unwrap_or('\0') as u32;
 
                 let is_identifier_initial: bool = character_begin.0 == identifier_begin;
                 let is_legal_character: bool = if is_identifier_initial {
