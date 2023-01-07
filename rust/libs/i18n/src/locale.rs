@@ -47,31 +47,19 @@ fn parse_locale<'a>(locale_name: &'a str) -> LocaleParts<'a> {
         length: usize,
         which_separator: usize,
     }
-    const INVALID_WHICH_SEPARATOR: usize = -1_isize as usize;
 
-    fn find_next_separator(s: &str, separators: &[u8]) -> FoundSeparator {
-        match s
-            .as_bytes()
+    fn find_next_separator(s: &str, separators: &[u8]) -> Option<FoundSeparator> {
+        let length = s.find(|c: char| separators.contains(&(c as u8)))?;
+        let found_separator: u8 = unsafe { *s.as_bytes().get_unchecked(length) };
+        let which_separator = separators
             .iter()
-            .position(|c: &u8| separators.contains(c))
-        {
-            None => FoundSeparator {
-                length: s.len(),
-                which_separator: INVALID_WHICH_SEPARATOR,
-            },
-            Some(length) => {
-                let found_separator: u8 = unsafe { *s.as_bytes().get_unchecked(length) };
-                match separators.iter().position(|c: &u8| *c == found_separator) {
-                    None => {
-                        unreachable!();
-                    }
-                    Some(which_separator) => FoundSeparator {
-                        length: length,
-                        which_separator: which_separator,
-                    },
-                }
-            }
-        }
+            .position(|c: &u8| *c == found_separator)
+            .expect("we just found this separator, so it must be here");
+
+        Some(FoundSeparator {
+            length,
+            which_separator,
+        })
     }
 
     let mut parts: LocaleParts = LocaleParts { parts: [""; 4] };
@@ -80,17 +68,19 @@ fn parse_locale<'a>(locale_name: &'a str) -> LocaleParts<'a> {
     let mut current_part: &mut [&str] = &mut parts.parts[..];
     let mut c: &str = locale_name;
     loop {
-        let part: FoundSeparator = find_next_separator(c, current_separators);
-        current_part[0] = &c[..part.length];
-        c = &c[part.length..];
-        if c.is_empty() {
-            break;
-        }
+        let part: FoundSeparator = match find_next_separator(c, current_separators) {
+            Some(part) => part,
+            None => {
+                // if we didn't find a separator, consume the entire string
+                current_part[0] = &c;
+                break;
+            }
+        };
 
-        qljs_assert!(part.which_separator != INVALID_WHICH_SEPARATOR);
+        current_part[0] = &c[..part.length];
+        c = &c[part.length + 1..];
         current_separators = &current_separators[(part.which_separator + 1)..];
         current_part = &mut current_part[(part.which_separator + 1)..];
-        c = &c[1..];
     }
 
     parts
